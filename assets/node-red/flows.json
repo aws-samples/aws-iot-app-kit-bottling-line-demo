@@ -1,0 +1,134 @@
+[
+    {
+        "id": "4723149578b03f68",
+        "type": "tab",
+        "label": "OPC-UA Server Simple Example",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "fa65daae3e18d11a",
+        "type": "opcua-compact-server",
+        "z": "4723149578b03f68",
+        "port": 54845,
+        "endpoint": "",
+        "productUri": "",
+        "acceptExternalCommands": true,
+        "maxAllowedSessionNumber": "10",
+        "maxConnectionsPerEndpoint": "10",
+        "maxAllowedSubscriptionNumber": "100",
+        "alternateHostname": "",
+        "name": "",
+        "showStatusActivities": false,
+        "showErrors": true,
+        "allowAnonymous": true,
+        "individualCerts": false,
+        "isAuditing": false,
+        "serverDiscovery": true,
+        "users": [],
+        "xmlsetsOPCUA": [],
+        "publicCertificateFile": "",
+        "privateCertificateFile": "",
+        "registerServerMethod": "1",
+        "discoveryServerEndpointUrl": "",
+        "capabilitiesForMDNS": "",
+        "maxNodesPerRead": 1000,
+        "maxNodesPerWrite": 1000,
+        "maxNodesPerHistoryReadData": 100,
+        "maxNodesPerBrowse": 3000,
+        "maxBrowseContinuationPoints": "100",
+        "maxHistoryContinuationPoints": "100",
+        "delayToInit": "1000",
+        "delayToClose": "200",
+        "serverShutdownTimeout": "100",
+        "addressSpaceScript": "/*jshint esversion: 6 */\n\nfunction constructAlarmAddressSpace(server, addressSpace, eventObjects, done) {\n    // server = the created node-opcua server\n    // addressSpace = address space of the node-opcua server\n    // eventObjects = add event variables here to hold them in memory from this script\n\n    // internal sandbox objects are:\n    // node = the compact server node,\n    // coreServer = core compact server object for debug and access to NodeOPCUA\n    // this.sandboxNodeContext = node context node-red\n    // this.sandboxFlowContext = flow context node-red\n    // this.sandboxGlobalContext = global context node-red\n    // this.sandboxEnv = env variables\n    // timeout and interval functions as expected from nodejs\n\n    const opcua = coreServer.choreCompact.opcua;\n    const LocalizedText = opcua.LocalizedText;\n    const namespace = addressSpace.getOwnNamespace();\n\n    const Variant = opcua.Variant;\n    const DataType = opcua.DataType;\n    const DataValue = opcua.DataValue;\n\n    let flexServerInternals = this;\n\n    const traverse = flexServerInternals.sandboxGlobalContext.get(\"traverse\");\n\n    const utils = {\n        get_referencable_path: (accumulated_path, path_key) => {\n            if (!isNaN(parseInt(path_key))) {\n                path_key = parseInt(path_key);\n            } else {\n                path_key = `'${path_key}'`;\n            }\n            return `${accumulated_path}[${path_key}]`;\n        },\n        is_array: (item) => typeof item === \"object\" && Array.isArray(item),\n        is_object: (item) => typeof item === \"object\" && !Array.isArray(item),\n        parse_value: (value, dataType) => {\n            if (!isNaN(parseInt(value)) && dataType === 'Integer') {\n                return parseInt(value);\n            } else if (!isNaN(parseFloat(value)) && dataType === 'Double') {\n                return parseFloat(value);\n            } else {\n                return value;\n            }\n        }\n    }\n\n    coreServer.debugLog(\"DEBUG: Initialize dynamic address space\");\n    const root_folder = addressSpace.findNode(\"RootFolder\");\n\n    const main_folder_name = flexServerInternals.sandboxFlowContext.get(\"name\") || \"Simulated Tags\";\n    const tags = flexServerInternals.sandboxFlowContext.get(\"tags\");\n\n    node.warn(\"INFO: Constructing new address space for OPC UA from:\");\n    node.warn(tags);\n\n    try {\n        let main_parent, current_parent;\n        /**\n         * IMPORTANT: Traverse doesn't support ES6 arrow functions.\n         * Do not replace `.map(function (x) {...})`\n         * with `.map((x)=>{...})`\n         */\n        const opcua_nodes = traverse(tags).map(function (x) {\n            if (this.isRoot) {\n                main_parent = namespace.addFolder(root_folder.objects, { browseName: main_folder_name });\n            } else if (utils.is_object(x) && this.key === \"ua_object\") {\n                // Block logic from traversing child elements\n                this.block();\n            } else if(this.parent.isRoot && utils.is_object(x) && this.key !== \"ua_object\") {\n                x.ua_object = namespace.addFolder(main_parent, { browseName: this.key });\n            } else if(this.parent.notRoot && utils.is_object(x) && this.key !== \"ua_object\") {\n                x.ua_object = namespace.addFolder(this.parent.node.ua_object, { browseName: this.key });\n            } else if (utils.is_array(x)) {\n    \n                // Add a folder for the node and set it as current parent folder\n                current_parent = namespace.addFolder(this.parent.node.ua_object, { browseName: this.key });\n\n                // Add tags for each mapped item in array\n                x.forEach((tag, index) => {\n                    namespace.addVariable({\n                        organizedBy: current_parent,\n                        browseName: tag.browseName,\n                        nodeId: `ns=1;s=${this.path.join(\"/\")}/${tag.browseName}`,\n                        dataType: tag.dataType,\n                        value: {\n                            get: function () {\n                                return new Variant({\n                                    dataType: tag.dataType === \"Integer\" ? DataType.Int32 : DataType[tag.dataType],\n                                    value: tag.hasOwnProperty(\"value\") ? tag.value : tag.defaultValue,\n                                });\n                            },\n                            set: function (variant) {\n                                // flexServerInternals.sandboxFlowContext.set(\n                                //     `${this.path.reduce(utils.get_referencable_path, \"tags\")}[${index}]`,\n                                //     utils.parse_value(variant.value, tag.DataType)\n                                // );\n                                \n                                return opcua.StatusCodes.Good;\n                            },\n                        },\n                    });\n                });\n\n                // Block logic from traversing child elements\n                this.block();\n\n            }\n\n        });\n    } catch (error) {\n        node.warn(error.stack);\n        node.warn(error.name);\n        node.warn(error.message);\n    }\n\n    coreServer.debugLog(\"DEBUG: Create dynamic address space done\");\n    node.warn(\"INFO: Construction of new address space for OPC UA done\");\n\n    done();\n}\n",
+        "x": 720,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "46f6a7fcd70dd65f",
+        "type": "inject",
+        "z": "4723149578b03f68",
+        "name": "Trigger",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "2",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "0.5",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 180,
+        "y": 140,
+        "wires": [
+            [
+                "7380b35e0655da7b"
+            ]
+        ],
+        "icon": "font-awesome/fa-arrow-circle-right"
+    },
+    {
+        "id": "7380b35e0655da7b",
+        "type": "function",
+        "z": "4723149578b03f68",
+        "name": "Simulate machine states",
+        "func": "/**\n * Node-RED function node to simulate values for\n * various OPC-UA tags.\n */\n\n let [scenario, tags, timer] = [\n    flow.get(\"scenario\"),\n    flow.get(\"tags\"),\n    flow.get(\"timer\"),\n];\n// node.warn(`Flow scenario: ${scenario}, Time remaining: ${timer} seconds`);\n\nconst STATE = {\n    PRODUCING: 1,\n    IDLE: 2,\n    STARVED: 3,\n    BLOCKED: 4,\n    CHANGEOVER: 5,\n    STOPPED: 6,\n    FAULTED: 7,\n};\n\nconst MODE = {\n    AUTOMATIC: 1,\n    MAINTENANCE: 2,\n    MANUAL: 3,\n    RANDOM: _.sample([1, 2, 3]),\n};\n\nconst STOP_REASON_CODE = {\n    NONE: 0,\n    LAST: (stop_reason_code) => stop_reason_code || 0,\n    RANDOM: _.sample([100, 110, 120, 130, 140, 150, 160, 200, 220]),\n};\n\nconst TIMER_UTILS = {\n    get IS_TIMER_UP() {\n        return timer <= 0\n    },\n    get RESET_TIMER() {\n        timer = _.random(60, 1200);\n    },\n    get COUNTDOWN() {\n        timer = _.max([timer - _.random(1, 100), 0]);\n    },\n};\n\nconst SPEED_UTILS = {\n    INCREASE: (current_speed) => _.min([current_speed*2 + 4, 60]),\n    DECREASE: (current_speed) => _.max([current_speed/2 - 2, 0]),\n    INCREASE_DEFECT: (current_speed, current_count) => _.random(0,_.ceil(current_speed/20)) + current_count,\n    INCREASE_COUNT: (current_speed, current_count) => _.random(0,_.ceil(current_speed/10)) + current_count,\n    MAINTAIN_COUNT: (current_count) => current_count,\n    get RESET_COUNT() { return 0; }\n};\n\nconst transitions = {\n    get onProducing() {\n        const update_tags = (tags) => {\n            const { \n                Status: [ StateCurrent, ModeCurrent, CurMachSpeed, Blocked, Starved ], \n                Admin: [StopReasonCode, ProcessedCount, DefectiveCount] \n            } = tags;\n\n            let updated_tags = {\n                Status: [\n                    _.set(StateCurrent, \"value\", STATE.PRODUCING),\n                    _.set(ModeCurrent, \"value\", MODE.AUTOMATIC),\n                    _.set(CurMachSpeed, \"value\", SPEED_UTILS.INCREASE(CurMachSpeed.value)),\n                    _.set(Blocked, \"value\", false),\n                    _.set(Starved, \"value\", false),\n                ],\n                Admin: [\n                    _.set(StopReasonCode, \"value\", STOP_REASON_CODE.NONE),\n                    _.set(ProcessedCount, \"value\", SPEED_UTILS.INCREASE_COUNT(CurMachSpeed.value, ProcessedCount.value)),\n                    _.set(DefectiveCount, \"value\", SPEED_UTILS.INCREASE_DEFECT(CurMachSpeed.value, DefectiveCount.value)),\n                ],\n            };\n            return updated_tags;\n\n        };\n        _.mapValues(tags, update_tags);\n    },\n\n    get onIdle() {\n        const update_tags = (tags) => {\n            const { \n                Status: [ StateCurrent, ModeCurrent, CurMachSpeed, Blocked, Starved ], \n                Admin: [StopReasonCode, ProcessedCount, DefectiveCount] \n            } = tags;\n\n            let updated_tags = {\n                Status: [\n                    _.set(StateCurrent, \"value\", STATE.IDLE),\n                    _.set(ModeCurrent, \"value\", MODE.RANDOM),\n                    _.set(CurMachSpeed, \"value\", SPEED_UTILS.DECREASE(CurMachSpeed.value)),\n                    _.set(Blocked, \"value\", false),\n                    _.set(Starved, \"value\", false),\n                ],\n                Admin: [\n                    _.set(StopReasonCode, \"value\", STOP_REASON_CODE.NONE),\n                    _.set(ProcessedCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(ProcessedCount.value)),\n                    _.set(DefectiveCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(DefectiveCount.value)),\n                ],\n            };\n            return updated_tags;\n\n        };\n        tags = _.mapValues(tags, update_tags);\n    },\n\n    get onStarve() {\n        const update_tags = (tags) => {\n            const { \n                Status: [ StateCurrent, ModeCurrent, CurMachSpeed, Blocked, Starved ], \n                Admin: [StopReasonCode, ProcessedCount, DefectiveCount] \n            } = tags;\n\n            let updated_tags = {\n                Status: [\n                    _.set(StateCurrent, \"value\", STATE.STARVED),\n                    _.set(ModeCurrent, \"value\", MODE.AUTOMATIC),\n                    _.set(CurMachSpeed, \"value\", SPEED_UTILS.DECREASE(CurMachSpeed.value)),\n                    _.set(Blocked, \"value\", false),\n                    _.set(Starved, \"value\", true),\n                ],\n                Admin: [\n                    _.set(StopReasonCode, \"value\", STOP_REASON_CODE.NONE),\n                    _.set(ProcessedCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(ProcessedCount.value)),\n                    _.set(DefectiveCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(DefectiveCount.value)),\n                ],\n            };\n            return updated_tags;\n\n        };\n        tags = _.mapValues(tags, update_tags);\n    },\n\n    get onBlock() {\n        const update_tags = (tags) => {\n            const { \n                Status: [ StateCurrent, ModeCurrent, CurMachSpeed, Blocked, Starved ], \n                Admin: [StopReasonCode, ProcessedCount, DefectiveCount] \n            } = tags;\n\n            let updated_tags = {\n                Status: [\n                    _.set(StateCurrent, \"value\", STATE.BLOCKED),\n                    _.set(ModeCurrent, \"value\", MODE.AUTOMATIC),\n                    _.set(CurMachSpeed, \"value\", SPEED_UTILS.DECREASE(CurMachSpeed.value)),\n                    _.set(Blocked, \"value\", true),\n                    _.set(Starved, \"value\", false),\n                ],\n                Admin: [\n                    _.set(StopReasonCode, \"value\", STOP_REASON_CODE.NONE),\n                    _.set(ProcessedCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(ProcessedCount.value)),\n                    _.set(DefectiveCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(DefectiveCount.value)),\n                ],\n            };\n            return updated_tags;\n\n        };\n        tags = _.mapValues(tags, update_tags);\n    },\n\n    get onChangeover() {\n        const update_tags = (tags) => {\n            const { \n                Status: [ StateCurrent, ModeCurrent, CurMachSpeed, Blocked, Starved ], \n                Admin: [StopReasonCode, ProcessedCount, DefectiveCount] \n            } = tags;\n\n            let updated_tags = {\n                Status: [\n                    _.set(StateCurrent, \"value\", STATE.CHANGEOVER),\n                    _.set(ModeCurrent, \"value\", MODE.MANUAL),\n                    _.set(CurMachSpeed, \"value\", 0),\n                    _.set(Blocked, \"value\", false),\n                    _.set(Starved, \"value\", false),\n                ],\n                Admin: [\n                    _.set(StopReasonCode, \"value\", STOP_REASON_CODE.NONE),\n                    _.set(ProcessedCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(ProcessedCount.value)),\n                    _.set(DefectiveCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(DefectiveCount.value)),\n                ],\n            };\n            return updated_tags;\n\n        };\n        tags = _.mapValues(tags, update_tags);\n    },\n\n    get onStop() {\n        const update_tags = (tags) => {\n            const { \n                Status: [ StateCurrent, ModeCurrent, CurMachSpeed, Blocked, Starved ], \n                Admin: [StopReasonCode, ProcessedCount, DefectiveCount] \n            } = tags;\n\n            let updated_tags = {\n                Status: [\n                    _.set(StateCurrent, \"value\", STATE.STOPPED),\n                    _.set(ModeCurrent, \"value\", MODE.RANDOM),\n                    _.set(CurMachSpeed, \"value\", 0),\n                    _.set(Blocked, \"value\", false),\n                    _.set(Starved, \"value\", false),\n                ],\n                Admin: [\n                    _.set(StopReasonCode, \"value\", STOP_REASON_CODE.LAST(StopReasonCode.value)),\n                    _.set(ProcessedCount, \"value\", SPEED_UTILS.RESET_COUNT),\n                    _.set(DefectiveCount, \"value\", SPEED_UTILS.RESET_COUNT),\n                ],\n            };\n            return updated_tags;\n        };\n        tags = _.mapValues(tags, update_tags);\n    },\n\n    get onFault() {\n        const update_tags = (tags) => {\n            const { \n                Status: [ StateCurrent, ModeCurrent, CurMachSpeed, Blocked, Starved ], \n                Admin: [StopReasonCode, ProcessedCount, DefectiveCount] \n            } = tags;\n\n            let updated_tags = {\n                Status: [\n                    _.set(StateCurrent, \"value\", STATE.FAULTED),\n                    _.set(ModeCurrent, \"value\", MODE.AUTOMATIC),\n                    _.set(CurMachSpeed, \"value\", 0),\n                    _.set(Blocked, \"value\", false),\n                    _.set(Starved, \"value\", false),\n                ],\n                Admin: [\n                    _.set(StopReasonCode, \"value\", STOP_REASON_CODE.RANDOM),\n                    _.set(ProcessedCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(ProcessedCount.value)),\n                    _.set(DefectiveCount, \"value\", SPEED_UTILS.MAINTAIN_COUNT(DefectiveCount.value)),\n                ],\n            };\n            return updated_tags;\n        };\n        tags = _.mapValues(tags, update_tags);\n    },\n};\n\nlet next_scenario = scenario;\n\nif (TIMER_UTILS.IS_TIMER_UP) {\n    switch (scenario) {\n        case \"STOPPED\":\n            next_scenario = \"IDLE\";\n            break;\n        case \"IDLE\":\n            next_scenario = \"PRODUCING\";\n            break;\n        case \"CHANGEOVER\":\n            next_scenario = \"IDLE\";\n            break;\n        case \"PRODUCING\":\n            next_scenario = _.sample([\"PRODUCING\", \"FAULTED\", \"BLOCKED\", \"STARVED\", \"IDLE\", \"CHANGEOVER\"]);\n            break;\n        case \"STARVED\":\n            next_scenario = \"PRODUCING\";\n            break;\n        case \"BLOCKED\":\n            next_scenario = \"PRODUCING\";\n            break;\n        case \"FAULTED\":\n            next_scenario = \"STOPPED\";\n            break;\n        default:\n            break;\n    }\n    TIMER_UTILS.RESET_TIMER;\n} else {\n    TIMER_UTILS.COUNTDOWN;\n}\n\nswitch (next_scenario) {\n    case \"STOPPED\":\n        transitions.onStop;\n        break;\n    case \"IDLE\":\n        transitions.onIdle;\n        break;\n    case \"CHANGEOVER\":\n        transitions.onChangeover;\n        break;\n    case \"PRODUCING\":\n        transitions.onProducing;\n        break;\n    case \"STARVED\":\n        transitions.onStarve;\n        break;\n    case \"BLOCKED\":\n        transitions.onBlock;\n        break;\n    case \"FAULTED\":\n        transitions.onFault;\n        break;\n    default:\n        break;\n}\n\nflow.set(\"scenario\", next_scenario);\nflow.set(\"tags\", tags);\nflow.set(\"timer\", timer);\n\nreturn msg;\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "// Code added here will be run once\n// whenever the node is started.\nif (!flow.get(\"name\")) {\n    flow.set(\"name\", \"Bottling Line\");\n}\n\n// if (!flow.get(\"scenario\")) {\n//     flow.set(\"scenario\", \"STOPPED\");\n// }\n\nflow.set(\"scenario\", \"STOPPED\");\n\nif (!flow.get(\"tags\")) {\n    const machines = [\"UN01\", \"UN02\", \"UN03\", \"UN04\", \"UN05\", \"UN06\"];\n    const common_tags = {\n        Status: [\n            { browseName: \"StateCurrent\", dataType: \"Integer\", defaultValue: 6 },\n            { browseName: \"ModeCurrent\", dataType: \"Integer\", defaultValue: 1 },\n            { browseName: \"CurMachSpeed\", dataType: \"Double\", defaultValue: 0.0 },\n            { browseName: \"Starved\", dataType: \"Boolean\", defaultValue: false },\n            { browseName: \"Blocked\", dataType: \"Boolean\", defaultValue: false },\n        ],\n        Admin: [\n            { browseName: \"StopReasonCode\", dataType: \"Integer\", defaultValue: 0 },\n            { browseName: \"ProcessedCount\", dataType: \"Integer\", defaultValue: 0 },\n            { browseName: \"DefectiveCount\", dataType: \"Integer\", defaultValue: 0 },\n        ],\n    };\n    \n    const tags = machines.reduce((accumulated_tags, machine)=> (accumulated_tags[machine]=common_tags, accumulated_tags),{});\n    \n    flow.set(\"tags\", tags);\n}\n\nif (!flow.hasOwnProperty(\"timer\")) {\n    const timer = Math.round(Math.random() * Math.pow(10, 3));\n    flow.set(\"timer\", timer);\n}",
+        "finalize": "",
+        "libs": [
+            {
+                "var": "_",
+                "module": "lodash"
+            }
+        ],
+        "x": 450,
+        "y": 140,
+        "wires": [
+            [
+                "35193c69f1b199f4",
+                "0d753654120c1815"
+            ]
+        ]
+    },
+    {
+        "id": "35193c69f1b199f4",
+        "type": "debug",
+        "z": "4723149578b03f68",
+        "name": "Line Status",
+        "active": false,
+        "tosidebar": false,
+        "console": false,
+        "tostatus": true,
+        "complete": "$flowContext(\"scenario\") & \" : \" & $flowContext(\"timer\") & \" seconds\"",
+        "targetType": "jsonata",
+        "statusVal": "$flowContext(\"scenario\") + \":\" + $flowContext(\"timer\") + \" seconds\"",
+        "statusType": "auto",
+        "x": 710,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "0d753654120c1815",
+        "type": "debug",
+        "z": "4723149578b03f68",
+        "name": "Processed Count",
+        "active": false,
+        "tosidebar": false,
+        "console": false,
+        "tostatus": true,
+        "complete": "$flowContext(\"tags\").UN01.Admin[1].value",
+        "targetType": "jsonata",
+        "statusVal": "$flowContext(\"tags\").UN01.Status",
+        "statusType": "auto",
+        "x": 730,
+        "y": 180,
+        "wires": []
+    }
+]

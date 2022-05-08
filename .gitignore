@@ -1,0 +1,33 @@
+# macOS metadata
+.DS_Store
+Thumbs.db
+
+# IDE / Editors
+# Visual Studio Code per-user settings
+.vscode/settings.json
+.vscode/launch.json
+
+# Intellij Folder
+.idea
+
+# dotenv environment variables file
+.env
+.env.test
+
+# Compiled Typescript files
+*.js
+!assets/node-red/settings.js
+!jest.config.js
+*.map
+*.d.ts
+
+# Dependency directories
+node_modules
+jspm_packages
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+
+# CDK Context
+cdk.context.json
