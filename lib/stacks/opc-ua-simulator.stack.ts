@@ -101,72 +101,7 @@ export class OpcuaSimulatorStack extends Stack {
             thingGroupName: `${stack.stackName}-Greengrass-Group`
         });
         deployment_group.addThing(iot_thing_cert_policy.thingArn);
-  
-        // Create the deployment with AWS public and stack components, target the thing group
-        // and add the components/version/updates
-        const greengrass_deployment = new GreengrassV2Deployment(this, "GreengrassDeployment", {
-            targetArn: deployment_group.thingGroupArn,
-            deploymentName: `${stack.stackName} - Example deployment`,
-            component: {
-                // Add core public components
-                "aws.greengrass.Nucleus": { componentVersion: "2.5.3" },
-                "aws.greengrass.Cli": { componentVersion: "2.5.3" },
-                "aws.iot.SiteWiseEdgeCollectorOpcua": { componentVersion: "2.0.3" },
-                "aws.iot.SiteWiseEdgePublisher": { componentVersion: "2.1.2" },
-                "aws.greengrass.StreamManager": { componentVersion: "2.0.14" }
-            }
-        });
-
-        greengrass_deployment.addComponent({
-            "aws.greengrass.LocalDebugConsole": {
-                componentVersion: "2.2.3",
-                configurationUpdate: {
-                    merge: JSON.stringify({ httpsEnabled: "false" })
-                }
-            }
-        });
-
-        // Create sitewise gateway
-        const sitewise_gateway = new sitewise.CfnGateway(
-            this,
-            "SitewiseGateway",
-            {
-                gatewayName: `${iot_thing_cert_policy.thingName}-Gateway`,
-                gatewayPlatform: {
-                    greengrassV2: {
-                        coreDeviceThingName: iot_thing_cert_policy.thingName
-                    }
-                },
-                gatewayCapabilitySummaries: [
-                    {
-                        capabilityNamespace: "iotsitewise:opcuacollector:2",
-                        capabilityConfiguration: JSON.stringify({
-                            sources: [{
-                                name: "Node-Red OPC-UA Server",
-                                endpoint: {
-                                    certificateTrust: { type: "TrustAny" },
-                                    endpointUri: "opc.tcp://localhost:54845",
-                                    securityPolicy: "NONE",
-                                    messageSecurityMode: "NONE",
-                                    identityProvider: { type: "Anonymous" },
-                                    nodeFilterRules:[]
-                                },
-                                measurementDataStreamPrefix: ""
-                            }]
-                        })
-                    },
-                    {
-                        capabilityNamespace: "iotsitewise:publisher:2",
-                        capabilityConfiguration: JSON.stringify({
-                            SiteWisePublisherConfiguration: {
-                                publishingOrder: "TIME_ORDER"
-                            }
-                        })
-                    },
-                ]
-            }
-        );
-
+        
         // Create sitewise assets
         const sitewise_assets = new SitewiseAssets(this, "SitewiseAssets");
 
@@ -334,8 +269,75 @@ export class OpcuaSimulatorStack extends Stack {
                 ec2.InitCommand.shellCommand("su ubuntu -c 'pm2 save'"),
                 ec2.InitCommand.shellCommand("nginx -t"),
                 ec2.InitCommand.shellCommand("service nginx reload"),
-                ec2.InitCommand.shellCommand("service greengrass restart && service greengrass status")
+                ec2.InitCommand.shellCommand("service greengrass status")
             ),
+        });
+
+        // Create sitewise gateway
+        const sitewise_gateway = new sitewise.CfnGateway(
+            this,
+            "SitewiseGateway",
+            {
+                gatewayName: `${iot_thing_cert_policy.thingName}-Gateway`,
+                gatewayPlatform: {
+                    greengrassV2: {
+                        coreDeviceThingName: iot_thing_cert_policy.thingName
+                    }
+                },
+                gatewayCapabilitySummaries: [
+                    {
+                        capabilityNamespace: "iotsitewise:opcuacollector:2",
+                        capabilityConfiguration: JSON.stringify({
+                            sources: [{
+                                name: "Node-Red OPC-UA Server",
+                                endpoint: {
+                                    certificateTrust: { type: "TrustAny" },
+                                    endpointUri: "opc.tcp://localhost:54845",
+                                    securityPolicy: "NONE",
+                                    messageSecurityMode: "NONE",
+                                    identityProvider: { type: "Anonymous" },
+                                    nodeFilterRules:[]
+                                },
+                                measurementDataStreamPrefix: ""
+                            }]
+                        })
+                    },
+                    {
+                        capabilityNamespace: "iotsitewise:publisher:2",
+                        capabilityConfiguration: JSON.stringify({
+                            SiteWisePublisherConfiguration: {
+                                publishingOrder: "TIME_ORDER"
+                            }
+                        })
+                    },
+                ]
+            }
+        );
+  
+        // Create the deployment with AWS public and stack components, target the thing group
+        // and add the components/version/updates
+        const greengrass_deployment = new GreengrassV2Deployment(this, "GreengrassDeployment", {
+            targetArn: deployment_group.thingGroupArn,
+            deploymentName: `${stack.stackName} - Example deployment`,
+            component: {
+                // Add core public components
+                "aws.greengrass.Nucleus": { componentVersion: "2.5.3" },
+                "aws.greengrass.Cli": { componentVersion: "2.5.3" },
+                "aws.iot.SiteWiseEdgeCollectorOpcua": { componentVersion: "2.0.3" },
+                "aws.iot.SiteWiseEdgePublisher": { componentVersion: "2.1.2" },
+                "aws.greengrass.StreamManager": { componentVersion: "2.0.14" }
+            }
+        });
+        greengrass_deployment.node.addDependency(sitewise_gateway);
+        greengrass_deployment.node.addDependency(opcua_server);
+
+        greengrass_deployment.addComponent({
+            "aws.greengrass.LocalDebugConsole": {
+                componentVersion: "2.2.3",
+                configurationUpdate: {
+                    merge: JSON.stringify({ httpsEnabled: "false" })
+                }
+            }
         });
 
         // Set stack outputs to be consumed by local processes
