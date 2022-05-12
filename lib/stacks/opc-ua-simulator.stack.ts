@@ -321,10 +321,10 @@ export class OpcuaSimulatorStack extends Stack {
             deploymentName: `${stack.stackName} - Example deployment`,
             component: {
                 // Add core public components
-                "aws.greengrass.Nucleus": { componentVersion: "2.5.3" },
-                "aws.greengrass.Cli": { componentVersion: "2.5.3" },
-                "aws.iot.SiteWiseEdgeCollectorOpcua": { componentVersion: "2.0.3" },
-                "aws.iot.SiteWiseEdgePublisher": { componentVersion: "2.1.2" },
+                "aws.greengrass.Nucleus": { componentVersion: "2.5.5" },
+                "aws.greengrass.Cli": { componentVersion: "2.5.5" },
+                "aws.iot.SiteWiseEdgeCollectorOpcua": { componentVersion: "2.1.1" },
+                "aws.iot.SiteWiseEdgePublisher": { componentVersion: "2.1.4" },
                 "aws.greengrass.StreamManager": { componentVersion: "2.0.14" }
             }
         });
