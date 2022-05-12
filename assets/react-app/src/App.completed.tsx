@@ -375,7 +375,7 @@ function App() {
                     href: "#",
                     title: "AWS IoT App Kit Demo",
                 }}
-                i18nStrings={{ overflowMenuTriggerText: "More" }}
+                i18nStrings={{ overflowMenuTriggerText: "More", overflowMenuTitleText: "More" }}
             />
             <AppLayout
                 breadcrumbs={<Breadcrumbs/>}
