@@ -1,4 +1,4 @@
-# AWS IoT App Kit Demo
+# AWS IoT Application Kit Demo
 
 [AWS IoT Application Kit](https://github.com/awslabs/iot-app-kit) is an open source client-side library that enables IoT application developers to simplify the development of complex IoT applications by leveraging performant reusable components from AWS IoT App Kit which abstract critical technical considerations expected from a realtime web application - handling streaming data, caching, preloading data, dynamic aggregation and preventing request fragmentation. This abstraction allows IoT application developers to focus on building custom user experiences and worrying less about underlying technical complexities.
 
