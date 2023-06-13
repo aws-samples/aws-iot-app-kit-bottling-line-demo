@@ -12,9 +12,9 @@
     "cdk": "cdk"
   },
   "devDependencies": {
-    "@aws-sdk/client-greengrassv2": "3.87.0",
-    "@aws-sdk/client-iot": "3.87.0",
-    "@aws-sdk/client-ssm": "3.87.0",
+    "@aws-sdk/client-greengrassv2": "3.350.0",
+    "@aws-sdk/client-iot": "3.350.0",
+    "@aws-sdk/client-ssm": "3.350.0",
     "@types/aws-lambda": "8.10.97",
     "@types/jest": "27.5.1",
     "@types/lodash": "4.14.182",
